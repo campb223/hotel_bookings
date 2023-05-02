@@ -11,24 +11,19 @@ library(rnaturalearth)
 library(rnaturalearthdata)
 library(lwgeom)
 library(sf)
+library(reactable)
 
 # Dashboard
-  ## Average stay length, Average Lead Time To Booking, repeat guest percent, cancellation rate
-  ## hotel types, table of total guests by resort type
-  ## Bookings by country world map
-  ## INCLUDE the top 5 countries or something 
-  ##***## INCLUDE THE DATA FRAME Size somewhere
+  # Edit hotel guest count figures inside and show numbers?
+  # Edit map legend
+  # edit country counts
 
-# Bookings By Season
-  ## bookings by year, cancellation by hotel type
-  ## bookings by month, cancellation rate by month,
-  ## bookings for each deposit type
+# Costs
+  # Add new graphs
 
-# EDA 
-  ## iframe for github repo or eda
 
 #reading in our data 
-hotel_bookings <- read.csv("../data/hotel_bookings.csv")
+hotel_bookings <- read.csv("hotel_bookings.csv")
 
 #Dashboard header
 header <- dashboardHeader(
@@ -41,9 +36,9 @@ ui <- dashboardPage(
   header,
   dashboardSidebar(
     sidebarMenu(
-      menuItem("Dashboard", tabName = "dashboard", icon = icon("dashboard")),
+      menuItem("Overview", tabName = "dashboard", icon = icon("dashboard")),
       menuItem("Bookings By Season", tabName = "bookings", icon = icon("calendar")),
-      menuItem("EDA", tabName = "eda", icon = icon("bar-chart")),
+      menuItem("Pricing", tabName = "pricing", icon = icon("dollar")),
       tags$div(
         style = "position: fixed; bottom: 0;",
         
@@ -73,20 +68,29 @@ ui <- dashboardPage(
          padding: 10px 0px 0px 10px;
        }
        .dashboard-body {
-          overflow-x: auto;
-          overflow-y: auto;
-          padding: 10px 0px 0px 10px;
+          background-color: #f2f2f2;
+       }
+       .content-wrapper {
+       background-color: #f2f2f2;
        }
        .my-fluid-row {
           display: flex;
           align-items: center;
           margin-top: 20px;
        }
+       .my-fluid-row2 {
+          display: flex;
+          align-items: center;
+       }
+       .my-fluid-row3 {
+          font-size: 16px;
+          padding: 0px 30px 0px 30px;
+       }
         "
       )
     ),
     tabItems(
-      tabItem(tabName = "dashboard", 
+      tabItem(tabName = "dashboard", class="dashboard-body",
               fluidRow(
                 column(width = 3, 
                        valueBoxOutput("avg_stay_length_box", width = 12)
@@ -101,37 +105,52 @@ ui <- dashboardPage(
                        valueBoxOutput("cancellation_rate_box", width = 12)
                 )
               ),
-              fluidRow(
-                column(width = 6,
-                       plotlyOutput("hotel_types_pie_chart", height = "200px")
+              fluidRow(class = "my-fluid-row2",
+                column(width = 3,
+                       reactableOutput("dataset_exp")
                 ),
-                column(width = 6,
-                       DTOutput("hotel_type_table")
-                )
+                column(width = 6, #class = "my-fluid-row3",
+                       plotlyOutput("hotel_type_table", height = "225px")
+                ),
+                column(width = 3,
+                      plotlyOutput("hotel_types_pie_chart", height = "225px", width = "100%")
+                ),
               ),
               fluidRow(class = "my-fluid-row",
-                column(width = 12,
-                       plotlyOutput("bookings_by_country_plot", height = "450px")
+                column(width = 9,
+                       plotlyOutput("bookings_by_country_plot", height = "400px")
                 ),
+                column(width = 3,
+                       reactableOutput("top_countries_table", height = "400px")
+                )
               )
       ),
       tabItem(tabName = "bookings",
-              fluidRow(class = "my-fluid-row",
-                       
-              ),
-              fluidRow(class = "my-fluid-row",
+              fluidRow(class = "my-fluid-row2",
                        column(width = 8,
-                              plotlyOutput("month_bar_plot")
-                       ),
+                              plotlyOutput("month_bar_plot", height="700px")
+                       ), 
                        column(width = 4,
-                              plotlyOutput("cancellation_by_hotel_type")
+                         fluidRow(class = "my-fluid-row2",
+                             column(width = 12,
+                                    plotlyOutput("cancellation_by_hotel_type", height = "320px")
+                             ),
+                         ),
+                           fluidRow(class = "my-fluid-row",
+                             column(width = 12,
+                                    plotlyOutput("dist_chan_counts", height = "380px")
+                             )
+                           ),
+                         ),
                        )
-              )
+              
       ),
-      tabItem(tabName = "eda",
-              fluidRow(
-                  column(12 ),
-              )
+      tabItem(tabName = "pricing",
+              fluidRow(class = "my-fluid-row",
+                       column(width = 12,
+                              plotlyOutput("cost_bar_plot")
+                       )
+              ),
       )
     )
   ),
@@ -187,22 +206,75 @@ server <- function(input, output, session) {
     hotel_types <- hotel_bookings %>%
       count(hotel, sort = TRUE)
     
-    hotel_type_labels <- paste(hotel_types$hotel, scales::percent(hotel_types$n / sum(hotel_types$n)))
+    hotel_type_labels <- paste(hotel_types$hotel)
+    hotel_type_perc <- paste(hotel_types$hotel, gsub("^(\\d+)(\\..*)?$", "\\1\\2", scales::percent(hotel_types$n / sum(hotel_types$n), accuracy = 0.1)))
     
-    plot_ly(hotel_types, labels = hotel_type_labels, values = ~n, type = "pie") %>%
-      layout(title = "Hotel Types")
+    plot_ly(hotel_types, labels = hotel_type_labels, values = ~n, type = "pie",
+            #textposition = 'inside',
+            textinfo = 'label+percent',
+            insidetextfont = list(color = '#FFFFFF'),
+            hoverinfo = 'text',
+            text = ~hotel_type_perc
+            ) %>%
+      layout(
+        title = "Hotel Types",
+        plot_bgcolor = "#f2f2f2",
+        paper_bgcolor = "#f2f2f2", 
+        showlegend = FALSE,
+        margin = list(l = 20, r = 20, t = 50, b = 0)
+      )
   })
   
-  # Create a table showing the total number of guests by hotel type
-  output$hotel_type_table <- renderDT({
-    hotel_type_summary <- hotel_bookings %>%
-      group_by(hotel) %>%
-      summarise(total_adults = sum(adults),
-                total_children = sum(children),
-                total_babies = sum(babies)) %>%
-      ungroup() %>%
-      datatable(rownames = FALSE, options = list(scrollX = TRUE))
-    return(hotel_type_summary)
+  # Create the reactable
+  output$dataset_exp <- renderReactable({
+    reactable(
+      data = data.frame(
+        Dataset = '<a href="https://www.kaggle.com/datasets/jessemostipak/hotel-booking-demand">Kaggle</a>',
+        Features = "32",
+        Entries = "119,390"
+      ),
+      columns = list(
+        Dataset = colDef(name = "Dataset", html = TRUE),
+        Features = colDef(name = "Features"),
+        Entries = colDef(name = "Entries")
+      ),
+      style = list(
+        backgroundColor = "#f2f2f2",
+        fontSize = "16px"
+      ),
+      pagination = FALSE
+    )
+  })
+  
+  # Create the plot
+  output$hotel_type_table <- renderPlotly({
+    
+    # Create a data frame with the hotel types and guest counts
+    hotel_type_table <- data.frame(
+      hotel = c("City Hotel", "Resort Hotel"),
+      Adults = c(146838, 74798),
+      Children = c(7248, 5155),
+      Babies = c(392, 557)
+    )
+    
+    # Add a new column that combines Children and Babies
+    hotel_type_table$Kids <- hotel_type_table$Children + hotel_type_table$Babies
+    
+    # Reshape the data to long format
+    hotel_type_table_long <- tidyr::pivot_longer(hotel_type_table, cols = c("Adults", "Kids"), names_to = "guest_type", values_to = "count")
+    
+    # Define the fill colors for the plot
+    fill_colors <- c("#66c2a5", "#fc8d62")
+    
+    # Create the plot
+    ggplot(hotel_type_table_long, aes(x = count/sum(count), y = hotel, fill = guest_type)) +
+      geom_col(width = 0.5) +
+      labs(title = "Hotel Guest Counts", x = "", y = "") +
+      scale_x_continuous(labels = scales::percent_format()) +
+      scale_fill_manual(values = fill_colors, labels = c("Adults", "Kids")) +
+      theme(plot.title = element_text(hjust = 0.5), legend.title = element_blank(), plot.background = element_rect(fill = "#f2f2f2"), 
+            legend.background = element_rect(fill = "#f2f2f2"))
+    
   })
   
   ##### THIRD ROW ------------------------------------------------------------
@@ -216,7 +288,7 @@ server <- function(input, output, session) {
     # Summarize the Netflix dataset by country and count the number of occurrences of each country
     hotel_summary <- hotel_bookings %>%
       group_by(country) %>%
-      summarise(n = n()) # %>%
+      summarise(total_bookings = n()) # %>%
     
     # Join the Netflix summary data with the world geometries on both the name and admin columns
     world_data <- world %>%
@@ -225,7 +297,7 @@ server <- function(input, output, session) {
       st_as_sf()
     
     # Replace NA values with 0
-    world_data$n[is.na(world_data$n)] <- 0
+    world_data$total_bookings[is.na(world_data$total_bookings)] <- 0
     
     # Calculate the centroids of the country polygons
     world_data$centroid <- st_centroid(world_data)
@@ -237,53 +309,84 @@ server <- function(input, output, session) {
     # Create a color palette function
     pal <- colorRampPalette(c("white", "purple"))
     
-    # Function for setting the aesthetics of the plot
-    my_theme <- function () { 
-      theme_bw() + theme(axis.text = element_blank(),
-                         axis.title = element_text(size = 14),
-                         strip.text = element_text(size = 14),
-                         panel.grid.major = element_blank(), 
-                         panel.grid.minor = element_blank(),
-                         panel.background = element_blank(), 
-                         legend.position = "bottom",
-                         panel.border = element_blank(), 
-                         strip.background = element_rect(fill = 'white', colour = 'white'))
-    }
-    
     world_map <- ggplot(world_data) +
-      geom_sf(aes(fill = n, text = paste0("Total films: ", n)), color = "grey", size = 0.5) +
+      geom_sf(aes(fill = total_bookings), color = "grey", size = 0.5) +
       scale_fill_gradientn(colours = pal(5), na.value = 'black') + 
+      geom_sf_text(aes(label = name), size = 0.75, color = "black") +
       scale_y_continuous(limits = c(-60, 90), breaks = c()) + 
       scale_x_continuous(breaks = c()) +
-      labs(title = "Releases By Country", x = NULL, y = NULL, caption = "Releases By Country") +
-      my_theme() 
+      labs(title = "Bookings By Country", x = NULL, y = NULL, caption = "Bookings By Country") +
+      theme(
+        plot.background = element_rect(fill = "#f2f2f2"), 
+        legend.background = element_rect(fill = "#f2f2f2"), 
+        panel.background = element_rect(fill = "#f2f2f2"),
+        strip.background = element_rect(fill = 'white', colour = 'white'),
+        legend.position = "bottom",
+        legend.box.just = "center",
+        axis.title = element_text(size = 14),
+        strip.text = element_text(size = 14),
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        axis.text = element_blank()
+        )
     
     
     ggplotly(world_map)
     
   })
   
+  # Top 10 countries by hotel bookings
+  output$top_countries_table <- renderReactable({
+    
+    # Create a data frame with the countries and number of bookings
+    booking_counts <- data.frame(
+      country = c("Portugal", "United Kingdom", "France", "Spain", "Germany", 
+                  "Ireland", "Italy", "Belgium", "Netherlands", "United States"),
+      bookings = c(21071, 9676, 8481, 6391, 6069, 2543, 2433, 1868, 1717, 1596)
+    )
+    
+    # Display the data frame as a reactable
+    reactable(
+      data = booking_counts,
+      columns = list(
+        country = colDef(name = "Country"),
+        bookings = colDef(name = "Bookings")
+      ),
+      style = list(
+        backgroundColor = "#f2f2f2"
+      ),
+      pagination = TRUE
+    )
+  })
+  
   ###### BOOKINGS BY SEASON ----------------------------------------------------
   ## ROW ONE
   
   
+  
   ## ROW TWO
+  
+  # Define the order of the months
+  month_order <- c("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December")
   
   # Create a reactive object that counts the frequency of bookings and cancellations by month
   month_counts <- reactive({
     hotel_bookings %>%
       group_by(arrival_date_month) %>%
       summarize(n_bookings = sum(is_canceled == 0), n_cancellations = sum(is_canceled == 1)) %>%
-      arrange(match(arrival_date_month, c("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December")))
+      mutate(arrival_date_month = factor(arrival_date_month, levels = month_order)) %>%
+      arrange(arrival_date_month)
   })
   
   # Create a bar plot of the distribution of bookings and cancellations by month
   output$month_bar_plot <- renderPlotly({
     month_counts_df <- month_counts()
     
-    plot_ly(data = month_counts_df, x = ~arrival_date_month, y = ~n_bookings, name = "Bookings", type = "bar") %>%
-      add_trace(y = ~n_cancellations, name = "Cancellations", marker = list(color = "red")) %>%
-      layout(title = "Bookings and Cancellations by Month", xaxis = list(title = ""), yaxis = list(title = ""))
+    plot_ly(data = month_counts_df, x = ~arrival_date_month, y = ~n_bookings, name = "Completed", type = "bar", marker = list(color = "green")) %>%
+      add_trace(y = ~n_cancellations, name = "Cancelled", marker = list(color = "red")) %>%
+      layout(title = "Completed Bookings and Cancellations by Month", xaxis = list(title = ""), yaxis = list(title = ""), 
+             plot_bgcolor = "#f2f2f2",
+             paper_bgcolor = "#f2f2f2")
   })
   
   output$cancellation_by_hotel_type <- renderPlotly({
@@ -300,25 +403,69 @@ server <- function(input, output, session) {
     cancellation_summary$total_bookings[3] <- cancellation_summary$cancellation_type_count[3] + cancellation_summary$cancellation_type_count[4]
     cancellation_summary$total_bookings[4] <- cancellation_summary$cancellation_type_count[3] + cancellation_summary$cancellation_type_count[4]
     
-    cancellation_summary$percent_cancellation[1] <- (cancellation_summary$cancellation_type_count[1] / cancellation_summary$total_bookings[1]) * 100
-    cancellation_summary$percent_cancellation[2] <- (cancellation_summary$cancellation_type_count[2] / cancellation_summary$total_bookings[2]) * 100
-    cancellation_summary$percent_cancellation[3] <- (cancellation_summary$cancellation_type_count[3] / cancellation_summary$total_bookings[3]) * 100
-    cancellation_summary$percent_cancellation[4] <- (cancellation_summary$cancellation_type_count[4] / cancellation_summary$total_bookings[4]) * 100
+    cancellation_summary$percent_cancellation[1] <- paste(round((cancellation_summary$cancellation_type_count[1] / cancellation_summary$total_bookings[1]) * 100, 1), "%")
+    cancellation_summary$percent_cancellation[2] <- paste(round((cancellation_summary$cancellation_type_count[2] / cancellation_summary$total_bookings[2]) * 100, 1), "%")
+    cancellation_summary$percent_cancellation[3] <- paste(round((cancellation_summary$cancellation_type_count[3] / cancellation_summary$total_bookings[3]) * 100, 1), "%")
+    cancellation_summary$percent_cancellation[4] <- paste(round((cancellation_summary$cancellation_type_count[4] / cancellation_summary$total_bookings[4]) * 100, 1), "%")
+    
+    # Define the fill colors for the plot
+    fill_colors <- c("green", "red")
     
     # Create the plot
     cancellation_summary %>%
       ggplot(. ,aes(x = hotel,
                     y = percent_cancellation,
                     label = percent_cancellation,
-                    fill = is_canceled)) +
+                    fill = factor(is_canceled))) +
       geom_col(width = 0.5) +
       geom_text(size = 6, position = position_stack(vjust = 0.5),
-                colour = "white", fontface = "bold") +
-      labs(title ="Percent Cancellations by Hotel Type", x = "Type of Hotel",
-           y = "Percentage of bookings (%)") +
-      theme(plot.title = element_text(hjust = 0.5), legend.title = element_blank())
+                colour = "black", fontface = "bold") +
+      labs(title ="Percent Cancellations by Hotel Type", x = "",
+           y = "") +
+      scale_fill_manual(values = fill_colors) +
+      theme(plot.title = element_text(hjust = 0.5), legend.title = element_blank(), plot.background = element_rect(fill = "#f2f2f2"), 
+            legend.background = element_rect(fill = "#f2f2f2"), legend.position = "none") 
   })
   
+  # Convert the month column to a factor with the desired order of levels
+  hotel_bookings$arrival_date_month <- factor(hotel_bookings$arrival_date_month, levels = month_order)
+  
+  # Create a line plot of the average daily rate by month for each hotel type
+  output$cost_bar_plot <- renderPlotly({
+    hotel_bookings %>%
+      group_by(hotel, arrival_date_month) %>%
+      summarise(avg_adr = mean(adr)) %>%
+      plot_ly(x = ~arrival_date_month, y = ~round(avg_adr, 2), color = ~hotel, type = "scatter", mode = "lines+markers",
+              line = list(width = 4)) %>%
+      layout(xaxis = list(title = ""),
+             yaxis = list(title = ""),
+             title = "Average Daily Rate by Month",
+             plot_bgcolor = "#f2f2f2",
+             paper_bgcolor = "#f2f2f2")
+  })
+  
+  output$dist_chan_counts <- renderPlotly({
+    dist_types <- hotel_bookings %>%
+      count(distribution_channel, sort = TRUE)
+    
+    dist_type_labels <- paste(dist_types$distribution_channel)
+    dist_type_perc <- paste(dist_types$distribution_channel, gsub("^(\\d+)(\\..*)?$", "\\1\\2", scales::percent(dist_types$n / sum(dist_types$n), accuracy = 0.1)))
+    
+    plot_ly(dist_types, labels = dist_type_labels, values = ~n, type = "pie", 
+            #textposition = 'inside',
+            textinfo = 'label+percent',
+            insidetextfont = list(color = '#FFFFFF'),
+            hoverinfo = 'text',
+            text = ~dist_type_perc
+            ) %>%
+      layout(title = list(text = "Booking Method", x = 0.55),
+             xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE),
+             yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE),
+             plot_bgcolor = "#f2f2f2",
+             paper_bgcolor = "#f2f2f2", 
+             showlegend = FALSE
+      )
+  })
   
 }
 
