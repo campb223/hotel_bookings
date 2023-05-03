@@ -12,9 +12,7 @@ library(rnaturalearthdata)
 library(lwgeom)
 library(sf)
 library(reactable)
-
-# Dashboard
-  # Edit map legend
+library(htmltools)
 
 #reading in our data 
 hotel_bookings <- read.csv("hotel_bookings.csv")
@@ -244,18 +242,22 @@ server <- function(input, output, session) {
     # Create the plot
     p <- ggplot(hotel_type_table_long, aes(x = count/sum(count), y = hotel, fill = guest_type)) +
       geom_col(width = 0.5) +
-      labs(title = "Hotel Guest Counts", x = "", y = "") +
+      labs(title = "Hotel Guest Counts (%)", x = "", y = "") +
       scale_x_continuous(labels = scales::percent_format()) +
       scale_fill_manual(values = fill_colors, labels = c("Adults", "Kids")) +
-      theme(plot.title = element_text(hjust = 0.5), legend.title = element_blank(), plot.background = element_rect(fill = "#f2f2f2"), 
-            legend.background = element_rect(fill = "#f2f2f2"))+
+      theme(plot.title = element_text(hjust = 0.5), legend.title = element_blank(), # plot.background = element_rect(fill = "#f2f2f2"), 
+            legend.background = element_rect(fill = "#f2f2f2")
+      ) +
       labs(fill = "Guest Type") +
       geom_text(aes(x = count/sum(count), y = hotel, label = scales::percent(count/sum(count), accuracy = 1)), 
                 position = position_stack(vjust = 0.75), size = 4, color = "black", fontface = "bold")
     
     # Turn off hover
     ggplotly(p, tooltip = c("label")) %>%
-      layout(hovermode = FALSE)
+      layout(hovermode = FALSE, 
+             plot_bgcolor = "#f2f2f2",
+             paper_bgcolor = "#f2f2f2"
+      )
   })
   
   # Create a pie chart of the hotel types
@@ -316,7 +318,7 @@ server <- function(input, output, session) {
     
     world_map <- ggplot(world_data) +
       geom_sf(aes(fill = total_bookings), color = "grey", size = 0.5) +
-      scale_fill_gradientn(colours = pal(5), na.value = 'black') + 
+      scale_fill_gradientn(colours = pal(20000), na.value = 'black') + 
       geom_sf_text(aes(label = name), size = 0.75, color = "black") +
       scale_y_continuous(limits = c(-60, 90), breaks = c()) + 
       scale_x_continuous(breaks = c()) +
@@ -343,6 +345,9 @@ server <- function(input, output, session) {
   # Top 10 countries by hotel bookings
   output$top_countries_table <- renderReactable({
     
+    # Add resource path
+    addResourcePath(prefix = "img", directoryPath = normalizePath("img"))
+    
     # Create a data frame with the countries and number of bookings
     booking_counts <- data.frame(
       country = c("Portugal", "United Kingdom", "France", "Spain", "Germany", 
@@ -354,7 +359,13 @@ server <- function(input, output, session) {
     reactable(
       data = booking_counts,
       columns = list(
-        country = colDef(name = "Country"),
+        country = colDef(name = "Country", cell = function(value) {
+          image <- img(src = sprintf("img/%s.png", tolower(value)), style = "height: 20px; width: 30px;", alt = value)
+          tagList(
+            div(style = "display: inline-block; width: 45px;", image),
+            value
+          )
+        }),
         bookings = colDef(name = "Bookings")
       ),
       style = list(
@@ -426,12 +437,15 @@ server <- function(input, output, session) {
       labs(title ="Percent Cancellations by Hotel Type", x = "",
            y = "", fill = "Booking Status") +
       scale_fill_manual(values = fill_colors) +
-      theme(plot.title = element_text(hjust = 0.5), legend.title = element_blank(), plot.background = element_rect(fill = "#f2f2f2"), 
+      theme(plot.title = element_text(hjust = 0.5), legend.title = element_blank(), 
             legend.background = element_rect(fill = "#f2f2f2"),
             axis.text.y = element_blank()) 
     
     ggplotly(p, tooltip = c("label")) %>%
-      layout(hovermode = FALSE)
+      layout(hovermode = FALSE, 
+             plot_bgcolor = "#f2f2f2",
+             paper_bgcolor = "#f2f2f2"
+      )
   })
   
   ## ROW TWO
@@ -444,7 +458,6 @@ server <- function(input, output, session) {
     dist_type_perc <- paste(dist_types$distribution_channel, gsub("^(\\d+)(\\..*)?$", "\\1\\2", scales::percent(dist_types$n / sum(dist_types$n), accuracy = 0.1)))
     
     plot_ly(dist_types, labels = dist_type_labels, values = ~n, type = "pie", 
-            #textposition = 'inside',
             textinfo = 'label+percent',
             insidetextfont = list(color = '#FFFFFF'),
             hoverinfo = 'text',
