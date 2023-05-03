@@ -5,9 +5,9 @@ account: campb223
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 9006449
-bundleId: 7162498
+bundleId: 7167240
 url: https://campb223.shinyapps.io/hotel-bookings/
-when: 1683008631.44229
-lastSyncTime: 1683008631.4423
+when: 1683091269.40043
+lastSyncTime: 1683091269.40043
 asMultiple: FALSE
 asStatic: FALSE

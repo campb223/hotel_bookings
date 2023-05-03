@@ -14,13 +14,7 @@ library(sf)
 library(reactable)
 
 # Dashboard
-  # Edit hotel guest count figures inside and show numbers?
   # Edit map legend
-  # edit country counts
-
-# Costs
-  # Add new graphs
-
 
 #reading in our data 
 hotel_bookings <- read.csv("hotel_bookings.csv")
@@ -37,7 +31,7 @@ ui <- dashboardPage(
   dashboardSidebar(
     sidebarMenu(
       menuItem("Overview", tabName = "dashboard", icon = icon("dashboard")),
-      menuItem("Bookings By Season", tabName = "bookings", icon = icon("calendar")),
+      menuItem("Bookings", tabName = "bookings", icon = icon("calendar")),
       menuItem("Pricing", tabName = "pricing", icon = icon("dollar")),
       tags$div(
         style = "position: fixed; bottom: 0;",
@@ -47,7 +41,7 @@ ui <- dashboardPage(
         ),
         
         tags$a(
-          href="https://github.com/campb223", target="_blank",
+          href="https://github.com/campb223/hotel_bookings", target="_blank",
           icon("github"),
           "View Source on Github"
         )
@@ -109,7 +103,7 @@ ui <- dashboardPage(
                 column(width = 3,
                        reactableOutput("dataset_exp")
                 ),
-                column(width = 6, #class = "my-fluid-row3",
+                column(width = 6, 
                        plotlyOutput("hotel_type_table", height = "225px")
                 ),
                 column(width = 3,
@@ -148,7 +142,12 @@ ui <- dashboardPage(
       tabItem(tabName = "pricing",
               fluidRow(class = "my-fluid-row",
                        column(width = 12,
-                              plotlyOutput("cost_bar_plot")
+                              plotlyOutput("cost_bar_plot", height = "350px")
+                       )
+              ),
+              fluidRow(class = "my-fluid-row",
+                       column(width = 12,
+                              plotlyOutput("adr_per_dist", height = "350px")
                        )
               ),
       )
@@ -201,30 +200,6 @@ server <- function(input, output, session) {
   
   ##### SECOND ROW ------------------------------------------------------
   
-  # Create a pie chart of the hotel types
-  output$hotel_types_pie_chart <- renderPlotly({
-    hotel_types <- hotel_bookings %>%
-      count(hotel, sort = TRUE)
-    
-    hotel_type_labels <- paste(hotel_types$hotel)
-    hotel_type_perc <- paste(hotel_types$hotel, gsub("^(\\d+)(\\..*)?$", "\\1\\2", scales::percent(hotel_types$n / sum(hotel_types$n), accuracy = 0.1)))
-    
-    plot_ly(hotel_types, labels = hotel_type_labels, values = ~n, type = "pie",
-            #textposition = 'inside',
-            textinfo = 'label+percent',
-            insidetextfont = list(color = '#FFFFFF'),
-            hoverinfo = 'text',
-            text = ~hotel_type_perc
-            ) %>%
-      layout(
-        title = "Hotel Types",
-        plot_bgcolor = "#f2f2f2",
-        paper_bgcolor = "#f2f2f2", 
-        showlegend = FALSE,
-        margin = list(l = 20, r = 20, t = 50, b = 0)
-      )
-  })
-  
   # Create the reactable
   output$dataset_exp <- renderReactable({
     reactable(
@@ -264,33 +239,63 @@ server <- function(input, output, session) {
     hotel_type_table_long <- tidyr::pivot_longer(hotel_type_table, cols = c("Adults", "Kids"), names_to = "guest_type", values_to = "count")
     
     # Define the fill colors for the plot
-    fill_colors <- c("#66c2a5", "#fc8d62")
+    fill_colors <- c("lightgreen", "purple")
     
     # Create the plot
-    ggplot(hotel_type_table_long, aes(x = count/sum(count), y = hotel, fill = guest_type)) +
+    p <- ggplot(hotel_type_table_long, aes(x = count/sum(count), y = hotel, fill = guest_type)) +
       geom_col(width = 0.5) +
       labs(title = "Hotel Guest Counts", x = "", y = "") +
       scale_x_continuous(labels = scales::percent_format()) +
       scale_fill_manual(values = fill_colors, labels = c("Adults", "Kids")) +
       theme(plot.title = element_text(hjust = 0.5), legend.title = element_blank(), plot.background = element_rect(fill = "#f2f2f2"), 
-            legend.background = element_rect(fill = "#f2f2f2"))
+            legend.background = element_rect(fill = "#f2f2f2"))+
+      labs(fill = "Guest Type") +
+      geom_text(aes(x = count/sum(count), y = hotel, label = scales::percent(count/sum(count), accuracy = 1)), 
+                position = position_stack(vjust = 0.75), size = 4, color = "black", fontface = "bold")
     
+    # Turn off hover
+    ggplotly(p, tooltip = c("label")) %>%
+      layout(hovermode = FALSE)
+  })
+  
+  # Create a pie chart of the hotel types
+  output$hotel_types_pie_chart <- renderPlotly({
+    hotel_types <- hotel_bookings %>%
+      count(hotel, sort = TRUE)
+    
+    hotel_type_labels <- paste(hotel_types$hotel)
+    hotel_type_perc <- paste(hotel_types$hotel, gsub("^(\\d+)(\\..*)?$", "\\1\\2", scales::percent(hotel_types$n / sum(hotel_types$n), accuracy = 0.1)))
+    
+    plot_ly(hotel_types, labels = hotel_type_labels, values = ~n, type = "pie",
+            textinfo = 'label+percent',
+            insidetextfont = list(color = '#FFFFFF'),
+            hoverinfo = 'text',
+            text = ~hotel_type_perc
+            ) %>%
+      layout(
+        title = "Hotel Types",
+        plot_bgcolor = "#f2f2f2",
+        paper_bgcolor = "#f2f2f2", 
+        showlegend = FALSE,
+        margin = list(l = 20, r = 20, t = 50, b = 0)
+      )
   })
   
   ##### THIRD ROW ------------------------------------------------------------
   
-  # Map of Netflix titles by country
+  # Map of bookings by country
   output$bookings_by_country_plot <- renderPlotly({
     
     # Read the world countries geometries
     world <- ne_countries(scale = "medium", returnclass = "sf")
     
-    # Summarize the Netflix dataset by country and count the number of occurrences of each country
+    # Summarize the bookings dataset by country and count the number of occurrences of each country
     hotel_summary <- hotel_bookings %>%
+      filter(is_canceled == 0) %>%
       group_by(country) %>%
       summarise(total_bookings = n()) # %>%
     
-    # Join the Netflix summary data with the world geometries on both the name and admin columns
+    # Join the bookings summary data with the world geometries on both the name and admin columns
     world_data <- world %>%
       st_make_valid() %>%
       left_join(hotel_summary, by = c("iso_a3" = "country")) %>%
@@ -315,7 +320,7 @@ server <- function(input, output, session) {
       geom_sf_text(aes(label = name), size = 0.75, color = "black") +
       scale_y_continuous(limits = c(-60, 90), breaks = c()) + 
       scale_x_continuous(breaks = c()) +
-      labs(title = "Bookings By Country", x = NULL, y = NULL, caption = "Bookings By Country") +
+      labs(title = NULL, x = NULL, y = NULL, fill = "Completed\nBookings\n") +
       theme(
         plot.background = element_rect(fill = "#f2f2f2"), 
         legend.background = element_rect(fill = "#f2f2f2"), 
@@ -362,10 +367,6 @@ server <- function(input, output, session) {
   ###### BOOKINGS BY SEASON ----------------------------------------------------
   ## ROW ONE
   
-  
-  
-  ## ROW TWO
-  
   # Define the order of the months
   month_order <- c("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December")
   
@@ -382,11 +383,12 @@ server <- function(input, output, session) {
   output$month_bar_plot <- renderPlotly({
     month_counts_df <- month_counts()
     
-    plot_ly(data = month_counts_df, x = ~arrival_date_month, y = ~n_bookings, name = "Completed", type = "bar", marker = list(color = "green")) %>%
-      add_trace(y = ~n_cancellations, name = "Cancelled", marker = list(color = "red")) %>%
-      layout(title = "Completed Bookings and Cancellations by Month", xaxis = list(title = ""), yaxis = list(title = ""), 
-             plot_bgcolor = "#f2f2f2",
-             paper_bgcolor = "#f2f2f2")
+    plot_ly(data = month_counts_df, x = ~arrival_date_month, y = ~n_bookings, name = "Completed", 
+            type = "scatter", mode = "lines", line = list(color = "#00FF00", width = 4, colors = c("#00FF00", "red"))) %>%
+      add_trace(y = ~n_cancellations, name = "Cancelled", type = "scatter", mode = "lines",
+                line = list(color = "red", width = 4)) %>%
+      layout(title = "Completed Bookings vs Cancellations by Month", xaxis = list(title = ""), 
+             yaxis = list(title = ""), plot_bgcolor = "#f2f2f2", paper_bgcolor = "#f2f2f2")
   })
   
   output$cancellation_by_hotel_type <- renderPlotly({
@@ -408,41 +410,31 @@ server <- function(input, output, session) {
     cancellation_summary$percent_cancellation[3] <- paste(round((cancellation_summary$cancellation_type_count[3] / cancellation_summary$total_bookings[3]) * 100, 1), "%")
     cancellation_summary$percent_cancellation[4] <- paste(round((cancellation_summary$cancellation_type_count[4] / cancellation_summary$total_bookings[4]) * 100, 1), "%")
     
-    # Define the fill colors for the plot
-    fill_colors <- c("green", "red")
+    # Define the fill colors and labels for the plot
+    fill_colors <- c("#00FF00", "red")
+    fill_labels <- c("Completed", "Cancelled")
     
     # Create the plot
-    cancellation_summary %>%
+    p <- cancellation_summary %>%
       ggplot(. ,aes(x = hotel,
                     y = percent_cancellation,
                     label = percent_cancellation,
-                    fill = factor(is_canceled))) +
+                    fill = factor(is_canceled, labels = fill_labels))) +
       geom_col(width = 0.5) +
-      geom_text(size = 6, position = position_stack(vjust = 0.5),
+      geom_text(size = 5, position = position_stack(vjust = 0.5),
                 colour = "black", fontface = "bold") +
       labs(title ="Percent Cancellations by Hotel Type", x = "",
-           y = "") +
+           y = "", fill = "Booking Status") +
       scale_fill_manual(values = fill_colors) +
       theme(plot.title = element_text(hjust = 0.5), legend.title = element_blank(), plot.background = element_rect(fill = "#f2f2f2"), 
-            legend.background = element_rect(fill = "#f2f2f2"), legend.position = "none") 
+            legend.background = element_rect(fill = "#f2f2f2"),
+            axis.text.y = element_blank()) 
+    
+    ggplotly(p, tooltip = c("label")) %>%
+      layout(hovermode = FALSE)
   })
   
-  # Convert the month column to a factor with the desired order of levels
-  hotel_bookings$arrival_date_month <- factor(hotel_bookings$arrival_date_month, levels = month_order)
-  
-  # Create a line plot of the average daily rate by month for each hotel type
-  output$cost_bar_plot <- renderPlotly({
-    hotel_bookings %>%
-      group_by(hotel, arrival_date_month) %>%
-      summarise(avg_adr = mean(adr)) %>%
-      plot_ly(x = ~arrival_date_month, y = ~round(avg_adr, 2), color = ~hotel, type = "scatter", mode = "lines+markers",
-              line = list(width = 4)) %>%
-      layout(xaxis = list(title = ""),
-             yaxis = list(title = ""),
-             title = "Average Daily Rate by Month",
-             plot_bgcolor = "#f2f2f2",
-             paper_bgcolor = "#f2f2f2")
-  })
+  ## ROW TWO
   
   output$dist_chan_counts <- renderPlotly({
     dist_types <- hotel_bookings %>%
@@ -458,13 +450,71 @@ server <- function(input, output, session) {
             hoverinfo = 'text',
             text = ~dist_type_perc
             ) %>%
-      layout(title = list(text = "Booking Method", x = 0.55),
+      layout(title = list(text = "Booking Methods", x = 0.55),
              xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE),
              yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE),
              plot_bgcolor = "#f2f2f2",
              paper_bgcolor = "#f2f2f2", 
              showlegend = FALSE
       )
+  })
+  
+  ###### Pricing ----------------------------------------------------
+  ## ROW ONE
+  
+  # Convert the month column to a factor with the desired order of levels
+  hotel_bookings$arrival_date_month <- factor(hotel_bookings$arrival_date_month, levels = month_order)
+  
+  # Define a function to format tick values with a dollar sign
+  dollar_format <- function(x) {
+    paste0("$", x)
+  }
+  
+  # Create a line plot of the average daily rate by month for each hotel type
+  output$cost_bar_plot <- renderPlotly({
+    hotel_bookings %>%
+      group_by(hotel, arrival_date_month) %>%
+      summarise(avg_adr = mean(adr)) %>%
+      plot_ly(x = ~arrival_date_month, y = ~round(avg_adr, 2), color = ~hotel, type = "scatter", mode = "lines+markers",
+              line = list(width = 4)) %>%
+      layout(xaxis = list(title = ""),
+             yaxis = list(title = "", tickformat = "s", tickprefix = "$", tickvals = seq(40, 180, 20), tickformat = dollar_format),
+             title = "Average Daily Rate by Month and Hotel Type",
+             plot_bgcolor = "#f2f2f2",
+             paper_bgcolor = "#f2f2f2")
+  })
+  
+  ## ROW TWO
+  
+  # Define the order of the months
+  month_order <- c("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December")
+  
+  # Create a reactive object that calculates the average ADR by month and market segment
+  adr_by_month_and_segment <- reactive({
+    hotel_bookings %>%
+      filter(market_segment %in% c("Corporate", "Direct", "Offline TA/TO", "Online TA")) %>%
+      mutate(market_segment = ifelse(market_segment %in% c("Offline TA/TO", "Online TA"), "TA/TO", market_segment)) %>%
+      group_by(arrival_date_month, market_segment) %>%
+      summarize(mean_adr = mean(adr, na.rm = TRUE)) %>%
+      ungroup() %>%
+      mutate(arrival_date_month = factor(arrival_date_month, levels = month_order)) %>%
+      arrange(arrival_date_month, market_segment)
+  })
+  
+  # Define a function to format tick values with a dollar sign
+  dollar_format <- function(x) {
+    paste0("$", x)
+  }
+  
+  # Create a scatter plot of the average ADR by month and market segment
+  output$adr_per_dist <- renderPlotly({
+    adr_by_month_and_segment_df <- adr_by_month_and_segment()
+    
+    plot_ly(data = adr_by_month_and_segment_df, x = ~arrival_date_month, y = ~round(mean_adr, 2), color = ~market_segment,
+            type = "scatter", mode = "lines+markers") %>%
+      layout(title = "Average Daily Rate by Month and Market Segment", xaxis = list(title = ""),
+             yaxis = list(title = "", tickformat = "s", tickprefix = "$", tickvals = seq(60, 160, 20), tickformat = dollar_format),
+             plot_bgcolor = "#f2f2f2", paper_bgcolor = "#f2f2f2")
   })
   
 }
